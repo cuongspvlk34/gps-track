@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>GPS Tracker</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0d0f14;--surface:#161922;--surface2:#1e2230;--border:#2a2f3e;
+  --accent:#00e5a0;--warn:#ffb800;--danger:#ff4757;
+  --text:#e8eaf0;--muted:#6b7280;
+  --shadow:0 8px 32px rgba(0,0,0,.5);
+}
+body{font-family:'Syne',sans-serif;background:var(--bg);height:100dvh;display:flex;flex-direction:column;overflow:hidden;color:var(--text)}
+
+/* HEADER */
+#header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px;height:54px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;z-index:500}
+.logo{font-weight:700;font-size:16px;letter-spacing:-.5px;display:flex;align-items:center;gap:8px}
+.logo-dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 10px var(--accent);animation:blink 1.8s ease infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+#live-badge{display:none;align-items:center;gap:6px;background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--accent)}
+#live-badge .ld{width:6px;height:6px;background:var(--accent);border-radius:50%;animation:blink 1s ease infinite}
+#btn-devices{background:var(--accent);color:#000;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-family:'Syne',sans-serif;font-weight:700;cursor:pointer;transition:opacity .15s}
+#btn-devices:hover{opacity:.85}
+
+/* MAP */
+#map{flex:1;min-height:0;position:relative}
+.leaflet-tile-pane{filter:brightness(.82) saturate(.65) hue-rotate(190deg)}
+
+/* BOTTOM PANEL */
+#panel{background:var(--surface);border-top:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap}
+#status-box{display:flex;align-items:center;gap:6px;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);min-width:80px}
+#sdot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s}
+#sdot.on{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+#sdot.loading{background:var(--warn);animation:blink .7s infinite}
+#sdot.er{background:var(--danger)}
+.sw{flex:1;min-width:140px;position:relative}
+.sw select{width:100%;appearance:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 30px 9px 12px;font-size:13px;font-family:'Syne',sans-serif;color:var(--text);cursor:pointer;outline:none;transition:border-color .2s}
+.sw select:focus{border-color:var(--accent)}
+.sw::after{content:'▾';position:absolute;right:10px;top:50%;transform:translateY(-52%);pointer-events:none;color:var(--muted);font-size:12px}
+.act-btn{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:12px;font-family:'Syne',sans-serif;font-weight:600;color:var(--text);cursor:pointer;white-space:nowrap;transition:border-color .2s,color .2s}
+.act-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* HUD */
+#hud{position:absolute;bottom:14px;left:12px;background:rgba(13,15,20,.88);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);line-height:1.9;pointer-events:none;z-index:400;backdrop-filter:blur(8px);display:none}
+#hud .hl{color:var(--accent);font-weight:500}
+
+/* OVERLAY */
+#overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1000;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(5px)}
+#overlay.open{display:flex}
+#modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);width:100%;max-width:420px;padding:26px 22px 22px;position:relative;animation:pop .2s cubic-bezier(.34,1.56,.64,1);max-height:90dvh;overflow-y:auto}
+@keyframes pop{from{opacity:0;transform:scale(.91)}to{opacity:1;transform:scale(1)}}
+.mtitle{font-size:18px;font-weight:700;margin-bottom:20px;display:flex;align-items:center;gap:8px}
+#mx{position:absolute;top:18px;right:18px;background:var(--surface2);border:none;border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);font-size:16px}
+#mx:hover{color:var(--text);background:var(--border)}
+.field{margin-bottom:18px}
+.field label{display:block;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.field input[type=text]{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;font-size:13px;font-family:'Syne',sans-serif;color:var(--text);outline:none;transition:border-color .2s}
+.field input[type=text]:focus{border-color:var(--accent)}
+
+/* KEY BOX — same layout as screenshot */
+.key-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:8px}
+.key-val{flex:1;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--accent);word-break:break-all;line-height:1.6;min-width:0}
+.kbtn{background:var(--surface2);border:1px solid var(--border);border-radius:7px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;flex-shrink:0;transition:border-color .15s,background .15s;color:var(--text)}
+.kbtn:hover{border-color:var(--accent);background:rgba(0,229,160,.08)}
+
+/* binary badge */
+.bin-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--warn);background:rgba(255,184,0,.08);border:1px solid rgba(255,184,0,.25);border-radius:5px;padding:3px 8px;margin-top:7px}
+
+.key-hint{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
+
+/* Device list */
+#dev-list{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px}
+.di{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;transition:background .15s;border-bottom:1px solid var(--border)}
+.di:last-child{border-bottom:none}
+.di:hover{background:var(--surface2)}
+.di.act{background:rgba(0,229,160,.07)}
+.di-ico{width:34px;height:34px;background:var(--surface2);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.di-info{flex:1;min-width:0}
+.di-nm{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.di-k{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:rgba(0,229,160,.1);color:var(--accent);flex-shrink:0}
+.di-edit-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:11px;font-family:'Syne',sans-serif;color:var(--muted);cursor:pointer;flex-shrink:0}
+.di-edit-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+.mactions{display:flex;gap:10px;margin-top:4px}
+.btn-p{flex:1;background:var(--accent);color:#000;border:none;border-radius:8px;padding:12px;font-size:13px;font-family:'Syne',sans-serif;font-weight:700;cursor:pointer;transition:opacity .15s}
+.btn-p:hover{opacity:.85}
+.btn-d{background:rgba(255,71,87,.1);border:1px solid rgba(255,71,87,.3);color:var(--danger);border-radius:8px;padding:12px 14px;font-size:13px;cursor:pointer;transition:background .15s}
+.btn-d:hover{background:rgba(255,71,87,.2)}
+.btn-full{width:100%;background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);color:var(--accent);border-radius:8px;padding:11px;font-size:13px;font-family:'Syne',sans-serif;font-weight:700;cursor:pointer;transition:background .15s}
+.btn-full:hover{background:rgba(0,229,160,.2)}
+
+/* Toast */
+#toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(12px);background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;transition:all .25s;pointer-events:none;z-index:3000;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* Popup */
+.leaflet-popup-content-wrapper{background:var(--surface2)!important;border:1px solid var(--border)!important;border-radius:10px!important;box-shadow:var(--shadow)!important;color:var(--text)!important}
+.leaflet-popup-tip{background:var(--surface2)!important}
+.leaflet-popup-content{margin:12px 16px!important;font-family:'Syne',sans-serif!important}
+.pu-name{font-size:14px;font-weight:700;margin-bottom:6px;color:var(--accent)}
+.pu-row{font-size:12px;color:var(--muted);margin-bottom:3px}.pu-row b{color:var(--text)}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div class="logo"><div class="logo-dot"></div>GPS TRACKER</div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div id="live-badge"><div class="ld"></div>LIVE</div>
+    <button id="btn-devices" onclick="openDeviceList()">📱 Thiết bị</button>
+  </div>
+</div>
+
+<div id="map">
+  <div id="hud">
+    <div>LAT &nbsp;<span class="hl" id="h-lat">—</span></div>
+    <div>LNG &nbsp;<span class="hl" id="h-lng">—</span></div>
+    <div>ACC &nbsp;<span class="hl" id="h-acc">—</span></div>
+    <div>TIME <span class="hl" id="h-time">—</span></div>
+  </div>
+</div>
+
+<div id="panel">
+  <div id="status-box"><div id="sdot"></div><span id="stxt">Sẵn sàng</span></div>
+  <div class="sw">
+    <select id="sel-dev" onchange="switchDev(this.value)">
+      <option disabled selected value="">-- Chọn thiết bị --</option>
+    </select>
+  </div>
+  <div class="sw" style="max-width:155px">
+    <select id="sel-int" onchange="changeInterval(this.value)">
+      <option value="0">Thủ công</option>
+      <option value="10">Mỗi 10 giây</option>
+      <option value="30" selected>Mỗi 30 giây</option>
+      <option value="60">Mỗi 60 giây</option>
+    </select>
+  </div>
+  <button class="act-btn" onclick="editActive()">✏ Edit</button>
+  <button class="act-btn" onclick="locateMe()">📍</button>
+  <button class="act-btn" onclick="loadLocation()">🔄</button>
+</div>
+
+<div id="toast"></div>
+
+<div id="overlay">
+  <div id="modal">
+    <div class="mtitle" id="mtitle">—</div>
+    <button id="mx" onclick="closeModal()">×</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+//  BINARY KEY ENGINE
+//  - Raw bytes = Uint8Array(32)  → 256-bit random
+//  - Display   = Base64 string   (như screenshot)
+//  - Download  = .bin file       (raw binary)
+// ══════════════════════════════════════════════
+function genBinaryKey() {
+  // Tạo 32 bytes ngẫu nhiên (256-bit) → giống BLE advertisement key
+  const raw = new Uint8Array(32);
+  crypto.getRandomValues(raw);
+  return raw;
+}
+
+function bytesToBase64(bytes) {
+  // Uint8Array → Base64 string (chuẩn)
+  let binary = '';
+  bytes.forEach(b => binary += String.fromCharCode(b));
+  return btoa(binary);
+}
+
+function base64ToBytes(b64) {
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+
+function bytesToHex(bytes) {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join(' ');
+}
+
+function downloadBin(bytes, filename) {
+  // Tải về file .bin (raw binary — đúng định dạng gốc)
+  const blob = new Blob([bytes], { type: 'application/octet-stream' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename || 'key.bin';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ══════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════
+const DB = 'gps_v3';
+let devices  = JSON.parse(localStorage.getItem(DB) || '[]');
+let activeId = localStorage.getItem(DB+'_aid') || null;
+let editingId = null;
+let _tempBytes = null;   // Uint8Array — current key being edited
+let _timer = null;
+let map, markers = {};
+
+function persist() {
+  localStorage.setItem(DB, JSON.stringify(devices));
+  localStorage.setItem(DB+'_aid', activeId||'');
+}
+function getD(id)   { return devices.find(d => d.id === id) }
+function getActive(){ return getD(activeId) }
+function upd(id, p) {
+  const i = devices.findIndex(d => d.id === id);
+  if (i >= 0) { devices[i] = {...devices[i], ...p}; persist(); }
+}
+
+// ══════════════════════════════════════════════
+//  MAP
+// ══════════════════════════════════════════════
+map = L.map('map', { zoomControl: true }).setView([21.027, 105.834], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>', maxZoom: 19
+}).addTo(map);
+
+function mkIcon() {
+  return L.divIcon({
+    html: `<svg width="26" height="34" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg">
+      <path d="M13 0C5.82 0 0 5.82 0 13c0 9.1 13 21 13 21S26 22.1 26 13C26 5.82 20.18 0 13 0z" fill="#00e5a0"/>
+      <circle cx="13" cy="13" r="5.5" fill="#000" opacity=".4"/>
+      <circle cx="13" cy="13" r="2.5" fill="#fff"/>
+    </svg>`,
+    className:'', iconSize:[26,34], iconAnchor:[13,34], popupAnchor:[0,-36]
+  });
+}
+
+// ══════════════════════════════════════════════
+//  SELECT RENDER
+// ══════════════════════════════════════════════
+function renderSel() {
+  const s = document.getElementById('sel-dev');
+  s.innerHTML = '';
+  if (!devices.length) {
+    s.innerHTML = '<option disabled selected value="">-- Chưa có thiết bị --</option>';
+    return;
+  }
+  devices.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.id; o.textContent = d.name;
+    if (d.id === activeId) o.selected = true;
+    s.appendChild(o);
+  });
+}
+
+// ══════════════════════════════════════════════
+//  MODAL ENGINE
+// ══════════════════════════════════════════════
+function openModal(title, html) {
+  document.getElementById('mtitle').innerHTML = title;
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('overlay').classList.add('open');
+}
+function closeModal() { document.getElementById('overlay').classList.remove('open'); }
+document.getElementById('overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('overlay')) closeModal();
+});
+
+// ══════════════════════════════════════════════
+//  DEVICE LIST
+// ══════════════════════════════════════════════
+function openDeviceList() {
+  let rows = '';
+  if (devices.length) {
+    rows = devices.map(d => `
+      <div class="di${d.id===activeId?' act':''}" onclick="switchDev('${d.id}');closeModal()">
+        <div class="di-ico">📱</div>
+        <div class="di-info">
+          <div class="di-nm">${esc(d.name)}</div>
+          <div class="di-k">${(d.keyB64||'').slice(0,28)}…</div>
+        </div>
+        ${d.id===activeId ? '<div class="tag">ACTIVE</div>' : ''}
+        <button class="di-edit-btn" onclick="openEdit('${d.id}');event.stopPropagation()">Edit</button>
+      </div>`).join('');
+    rows = `<div id="dev-list">${rows}</div>`;
+  } else {
+    rows = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;margin-bottom:14px">Chưa có thiết bị nào</div>';
+  }
+  openModal('📱 Thiết bị của tôi', rows + `
+    <button class="btn-full" onclick="openAdd()">＋ Thêm thiết bị mới</button>
+  `);
+}
+
+// ══════════════════════════════════════════════
+//  ADD / EDIT
+// ══════════════════════════════════════════════
+function openAdd() {
+  editingId = null;
+  _tempBytes = genBinaryKey();
+  openModal('✨ Thêm thiết bị', buildEditForm(''));
+}
+
+function openEdit(id) {
+  editingId = id;
+  const d = getD(id);
+  _tempBytes = d.keyBytes ? new Uint8Array(d.keyBytes) : genBinaryKey();
+  openModal('✏ Sửa thiết bị', buildEditForm(d.name, true));
+}
+
+function editActive() {
+  if (!activeId) { toast('Chưa chọn thiết bị'); return; }
+  openEdit(activeId);
+}
+
+function buildEditForm(name, isEdit=false) {
+  const b64  = bytesToBase64(_tempBytes);
+  const hex  = bytesToHex(_tempBytes);
+  const fname = (name||'device').toLowerCase().replace(/\s+/g,'-');
+  return `
+    <div class="field">
+      <label>Tên thiết bị</label>
+      <input type="text" id="inp-nm" value="${esc(name)}" placeholder="VD: iPhone của tôi" maxlength="30"/>
+    </div>
+
+    <div class="field">
+      <label>Advertisement Key</label>
+      <div class="key-box">
+        <div class="key-val" id="key-disp">${b64}</div>
+        <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+          <button class="kbtn" title="Tạo key binary mới" onclick="regenKey()">🔄</button>
+          <button class="kbtn" title="Copy Base64" onclick="copyB64()">📋</button>
+          <button class="kbtn" title="Tải về file .bin" onclick="dlBin()" style="background:rgba(0,229,160,.12);border-color:var(--accent)">⬇</button>
+        </div>
+      </div>
+      <div class="bin-badge">BIN · 32 bytes · 256-bit</div>
+      <div style="margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:5px;font-weight:700;letter-spacing:.5px">HEX PREVIEW</div>
+        <div id="hex-disp" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6ee7b7;word-break:break-all;line-height:1.7">${hex}</div>
+      </div>
+      <div class="key-hint">Key là dữ liệu binary 32 bytes. Hiển thị dưới dạng Base64. Nhấn ⬇ để tải về file <code style="background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:10px">.bin</code></div>
+    </div>
+
+    <div class="mactions">
+      <button class="btn-p" onclick="saveDevice()">💾 Lưu thiết bị</button>
+      ${isEdit ? `<button class="btn-d" onclick="delDevice('${editingId}')">🗑</button>` : ''}
+    </div>`;
+}
+
+function regenKey() {
+  _tempBytes = genBinaryKey();
+  const el1 = document.getElementById('key-disp');
+  const el2 = document.getElementById('hex-disp');
+  if (el1) el1.textContent = bytesToBase64(_tempBytes);
+  if (el2) el2.textContent = bytesToHex(_tempBytes);
+  toast('🔑 Key binary mới đã tạo');
+}
+
+function copyB64() {
+  const txt = bytesToBase64(_tempBytes);
+  navigator.clipboard.writeText(txt)
+    .then(()=>toast('📋 Đã copy Base64 key'))
+    .catch(()=>{
+      const t=document.createElement('textarea');t.value=txt;
+      document.body.appendChild(t);t.select();document.execCommand('copy');
+      document.body.removeChild(t);toast('📋 Đã copy Base64 key');
+    });
+}
+
+function dlBin() {
+  const name = (document.getElementById('inp-nm')?.value||'device').trim().toLowerCase().replace(/\s+/g,'-') || 'device';
+  downloadBin(_tempBytes, name+'_adv_key.bin');
+  toast('⬇ Đang tải key.bin…');
+}
+
+function saveDevice() {
+  const name = (document.getElementById('inp-nm')?.value||'').trim() || 'Thiết bị mới';
+  const keyB64   = bytesToBase64(_tempBytes);
+  const keyBytes = Array.from(_tempBytes); // store as plain array for JSON
+
+  if (editingId) {
+    upd(editingId, { name, keyB64, keyBytes });
+    toast(`✅ Đã cập nhật "${name}"`);
+  } else {
+    const d = {
+      id: crypto.randomUUID(), name, keyB64, keyBytes,
+      lat:null, lng:null, acc:null, ts:null
+    };
+    devices.push(d); activeId = d.id; persist();
+    toast(`✅ Đã thêm "${name}"`);
+    startTracking();
+  }
+  renderSel(); closeModal();
+}
+
+function delDevice(id) {
+  const d = getD(id); if (!d) return;
+  if (!confirm(`Xóa thiết bị "${d.name}"?`)) return;
+  devices = devices.filter(x => x.id !== id);
+  if (activeId === id) activeId = devices[0]?.id || null;
+  if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
+  persist(); renderSel(); closeModal();
+  toast(`🗑 Đã xóa "${d.name}"`);
+}
+
+// ══════════════════════════════════════════════
+//  SWITCH DEVICE
+// ══════════════════════════════════════════════
+function switchDev(id) {
+  activeId = id; persist(); renderSel();
+  const d = getD(id);
+  if (d?.lat) showOnMap(d); else loadLocation();
+}
+
+// ══════════════════════════════════════════════
+//  LOCATION
+// ══════════════════════════════════════════════
+function loadLocation() {
+  const d = getActive(); if (!d) { setS('idle'); return; }
+  setS('loading');
+  if ('geolocation' in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      p => store(d.id, p.coords.latitude, p.coords.longitude, Math.round(p.coords.accuracy), false),
+      ()  => simulate(d.id),
+      { timeout: 8000, enableHighAccuracy: true }
+    );
+  } else simulate(d.id);
+}
+
+function simulate(id) {
+  const d = getD(id);
+  const lat = (d?.lat || 21.0278) + (Math.random()-.5)*.005;
+  const lng = (d?.lng || 105.834) + (Math.random()-.5)*.005;
+  store(id, lat, lng, Math.round(10 + Math.random()*20), true);
+}
+
+function store(id, lat, lng, acc, sim) {
+  const ts = new Date().toISOString();
+  upd(id, { lat, lng, acc, ts });
+  showOnMap(getD(id), sim);
+  setS(sim ? 'sim' : 'on');
+}
+
+function showOnMap(d, sim=false) {
+  const ll = [d.lat, d.lng];
+  if (markers[d.id]) markers[d.id].setLatLng(ll);
+  else { markers[d.id] = L.marker(ll, { icon: mkIcon() }).addTo(map); }
+  const ts = d.ts ? new Date(d.ts).toLocaleTimeString('vi-VN') : '—';
+  markers[d.id].bindPopup(`
+    <div class="pu-name">📱 ${esc(d.name)}</div>
+    <div class="pu-row"><b>Lat:</b> ${d.lat.toFixed(6)}</div>
+    <div class="pu-row"><b>Lng:</b> ${d.lng.toFixed(6)}</div>
+    <div class="pu-row"><b>Chính xác:</b> ±${d.acc}m</div>
+    <div class="pu-row"><b>Key:</b> <span style="font-family:'JetBrains Mono',monospace;font-size:10px">${(d.keyB64||'').slice(0,16)}…</span></div>
+    <div class="pu-row"><b>Cập nhật:</b> ${ts}</div>
+    ${sim ? '<div style="font-size:10px;color:var(--warn);margin-top:5px">⚠ Vị trí mô phỏng</div>' : ''}
+  `);
+  if (d.id === activeId) {
+    map.flyTo(ll, 15, { duration: 1.2 });
+    updateHUD(d);
+    document.getElementById('live-badge').style.display = 'flex';
+  }
+}
+
+function updateHUD(d) {
+  document.getElementById('hud').style.display = 'block';
+  document.getElementById('h-lat').textContent  = d.lat.toFixed(6);
+  document.getElementById('h-lng').textContent  = d.lng.toFixed(6);
+  document.getElementById('h-acc').textContent  = `±${d.acc}m`;
+  document.getElementById('h-time').textContent = d.ts ? new Date(d.ts).toLocaleTimeString('vi-VN') : '—';
+}
+
+function locateMe() {
+  if (!('geolocation' in navigator)) { toast('Trình duyệt không hỗ trợ GPS'); return; }
+  toast('📡 Đang định vị...');
+  navigator.geolocation.getCurrentPosition(
+    p => map.flyTo([p.coords.latitude, p.coords.longitude], 16, { duration: 1.2 }),
+    () => toast('❌ Không lấy được vị trí'), { timeout: 10000 }
+  );
+}
+
+// ══════════════════════════════════════════════
+//  INTERVAL
+// ══════════════════════════════════════════════
+function startTracking() {
+  clearInterval(_timer);
+  const sec = parseInt(document.getElementById('sel-int').value || '30');
+  if (sec > 0) _timer = setInterval(loadLocation, sec * 1000);
+  loadLocation();
+}
+function changeInterval(v) {
+  clearInterval(_timer);
+  const sec = parseInt(v);
+  if (sec > 0) _timer = setInterval(loadLocation, sec * 1000);
+}
+
+// ══════════════════════════════════════════════
+//  STATUS / UTILS
+// ══════════════════════════════════════════════
+const SM = {
+  on:['on','Online'], loading:['loading','Loading…'],
+  sim:['on','Mô phỏng'], er:['er','Lỗi'], idle:['','Sẵn sàng']
+};
+function setS(s) {
+  const [cls, txt] = SM[s] || ['','—'];
+  document.getElementById('sdot').className = cls;
+  document.getElementById('stxt').textContent = txt;
+}
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+let _tt;
+function toast(m) {
+  const e = document.getElementById('toast');
+  e.textContent = m; e.classList.add('show');
+  clearTimeout(_tt); _tt = setTimeout(()=>e.classList.remove('show'), 2800);
+}
+
+// ══════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════
+function init() {
+  renderSel();
+  if (!activeId && devices.length) activeId = devices[0].id;
+  if (!devices.length) {
+    setS('idle');
+    document.getElementById('stxt').textContent = 'Nhấn "Thiết bị" để bắt đầu';
+    setTimeout(() => { if (!devices.length) openAdd(); }, 700);
+  } else {
+    startTracking();
+  }
+}
+init();
+</script>
+</body>
+</html>
